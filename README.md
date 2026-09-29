@@ -4,7 +4,7 @@
 
 [GitHub 原始碼](https://github.com/A0966411725-png/HW10-Taiwan-Weather)
 
-# HW10｜Taiwan Weather Forecast
+# HW1｜CWA 天氣預報網站 using AI Agent
 
 台灣六大區域的一週氣溫預報網站。使用中央氣象署 JSON 資料，經 Python 整理後存入 SQLite，再由 Streamlit 透過 SQL 查詢，呈現每日最高／最低溫折線圖、表格與台灣地圖。
 

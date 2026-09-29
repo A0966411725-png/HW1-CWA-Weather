@@ -1,4 +1,4 @@
-"""HW10: all displayed forecast data comes from SQLite SQL queries."""
+"""HW1: all displayed forecast data comes from SQLite SQL queries."""
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
