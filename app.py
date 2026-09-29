@@ -18,6 +18,10 @@ BANDS = [("<20", "#1c7ed6", "white"), ("20–24", "#2f9e44", "white"),
          ("25–30", "#f5c400", "#212529"), (">30", "#e03131", "white")]
 REGION_CENTRES = {"北部地區": (25.0, 121.3), "中部地區": (24.0, 120.7), "南部地區": (22.9, 120.4),
                   "東北部地區": (24.7, 121.75), "東部地區": (23.8, 121.5), "東南部地區": (22.8, 121.15)}
+ALL_TAIWAN = "全台灣"
+COUNTY_ORDER = ("臺北市", "新北市", "基隆市", "桃園市", "新竹市", "新竹縣", "苗栗縣", "臺中市", "彰化縣", "南投縣", "雲林縣",
+                "嘉義市", "嘉義縣", "臺南市", "高雄市", "屏東縣", "宜蘭縣", "花蓮縣", "臺東縣", "澎湖縣", "金門縣", "連江縣")
+TAIWAN_BOUNDS = [[21.9, 119.4], [25.3, 122.0]]
 
 
 def daily_mean(row):
@@ -25,13 +29,13 @@ def daily_mean(row):
     return math.floor((row.mint + row.maxt) / 2 + 0.5)
 
 
-def temperature_marker(value, size):
+def temperature_marker(value, size, faded=False):
     _, background, text = BANDS[0 if value < 20 else 1 if value < 25 else 2 if value <= 30 else 3]
     return folium.DivIcon(
         html=f'<div style="width:{size}px;height:{size}px;line-height:{size}px;border-radius:50%;'
              f'background:{background};color:{text};font-size:{size // 2}px;font-weight:700;text-align:center;'
-             f'font-family:sans-serif;border:1px solid rgba(0,0,0,.35);box-shadow:0 1px 3px rgba(0,0,0,.35)">'
-             f'{value}</div>',
+             f'font-family:sans-serif;border:1px solid rgba(0,0,0,.35);box-shadow:0 1px 3px rgba(0,0,0,.35);'
+             f'opacity:{0.3 if faded else 1}">{value}</div>',
         icon_size=(size, size), icon_anchor=(size // 2, size // 2), class_name="temperature-marker")
 
 
@@ -57,6 +61,21 @@ class Legend(MacroElement):
         self.html = ('<div style="background:rgba(255,255,255,.92);padding:6px 8px;border-radius:6px;'
                      'box-shadow:0 1px 4px rgba(0,0,0,.3);font:12px sans-serif;color:#212529">'
                      f'<div style="margin-bottom:4px;font-weight:600">日均溫 °C</div><div style="display:flex">{cells}</div></div>')
+
+
+class FitBounds(MacroElement):
+    """fitBounds without animation: animations pause in background tabs and would leave the old view."""
+    _template = Template("""
+        {% macro script(this, kwargs) %}
+        {{ this._parent.get_name() }}.fitBounds({{ this.bounds|tojson }}, {{ this.options|tojson }});
+        {% endmacro %}
+    """)
+
+    def __init__(self, bounds, max_zoom=None):
+        super().__init__()
+        self._name = "FitBounds"
+        self.bounds = [[float(lat), float(lon)] for lat, lon in bounds]
+        self.options = {"animate": False, **({"maxZoom": max_zoom} if max_zoom else {})}
 
 
 st.set_page_config(page_title="Taiwan Weather Forecast", page_icon="🌤️", layout="wide")
@@ -105,9 +124,13 @@ with right:
 st.subheader("台灣溫度預報地圖")
 layer = st.radio("地圖圖層", ["鄉鎮市區", "六大區域"] if not towns.empty else ["六大區域"], horizontal=True)
 points = towns if layer == "鄉鎮市區" else all_data
-selected_date = st.selectbox("選擇預報日期", sorted(points.dataDate.unique()))
+date_column, county_column = st.columns(2)
+selected_date = date_column.selectbox("選擇預報日期", sorted(points.dataDate.unique()))
 day = points[points.dataDate == selected_date]
+county = ALL_TAIWAN
 if layer == "鄉鎮市區":
+    counties = sorted(day.countyName.unique(), key=lambda c: (COUNTY_ORDER.index(c) if c in COUNTY_ORDER else len(COUNTY_ORDER), c))
+    county = county_column.selectbox("選擇縣市", [ALL_TAIWAN, *counties], help="選定後地圖會移到該縣市並放大。")
     fetched = datetime.fromisoformat(info["towns_fetched_at"]).astimezone(TAIWAN) if "towns_fetched_at" in info else None
     st.caption(f"{len(day)} 個鄉鎮市區，來源 CWA 一週鄉鎮預報" + (f"（擷取：{fetched:%Y/%m/%d %H:%M}）" if fetched else "")
                + "。標記位置為各鄉鎮市區的代表點。")
@@ -116,11 +139,19 @@ else:
 st.caption("標記數字與顏色為當日（最低溫＋最高溫）÷2，四捨五入，並非氣象署發布的日平均溫；滑鼠移到標記上可看高低溫。")
 
 weather_map = folium.Map(location=[23.7, 121], zoom_start=7, zoom_snap=0.25, tiles="OpenStreetMap")
-weather_map.fit_bounds([[21.9, 119.4], [25.3, 122.0]])
+if county == ALL_TAIWAN:
+    FitBounds(TAIWAN_BOUNDS).add_to(weather_map)
+else:
+    area = day[day.countyName == county]
+    st.info(f"**{county}**：{len(area)} 個鄉鎮市區，{selected_date} 最低 {area.mint.min():g}°C、最高 {area.maxt.max():g}°C")
+    FitBounds([[area.lat.min() - 0.03, area.lon.min() - 0.03], [area.lat.max() + 0.03, area.lon.max() + 0.03]],
+              max_zoom=11).add_to(weather_map)
 for row in day.itertuples(index=False):
     if layer == "鄉鎮市區":
-        folium.Marker([row.lat, row.lon], icon=temperature_marker(daily_mean(row), 22),
-                      tooltip=f"{row.countyName}{row.townName} · {row.mint:g}–{row.maxt:g} °C").add_to(weather_map)
+        selected = county in (ALL_TAIWAN, row.countyName)
+        folium.Marker([row.lat, row.lon], icon=temperature_marker(daily_mean(row), 22, faded=not selected),
+                      tooltip=f"{row.countyName}{row.townName} · {row.mint:g}–{row.maxt:g} °C",
+                      z_index_offset=1000 if selected else 0).add_to(weather_map)
     else:
         folium.Marker(REGION_CENTRES[row.regionName], icon=temperature_marker(daily_mean(row), 36),
                       tooltip=f"{row.regionName} · {row.mint:g}–{row.maxt:g} °C",
