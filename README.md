@@ -1,3 +1,9 @@
+[開啟氣象預報網站](https://hw10-taiwan-weather-yenkai.streamlit.app/)
+
+![台灣六大區域一週氣象預報網站](website.png)
+
+[GitHub 原始碼](https://github.com/A0966411725-png/HW10-Taiwan-Weather)
+
 # HW10｜Taiwan Weather Forecast
 
 台灣六大區域的一週氣溫預報網站。使用中央氣象署 JSON 資料，經 Python 整理後存入 SQLite，再由 Streamlit 透過 SQL 查詢，呈現每日最高／最低溫折線圖、表格與台灣地圖。
@@ -38,7 +44,7 @@ cwaopendata → Dataset → Locations → Location[]
 
 ## 安裝與執行
 
-需要 Python 3.11 以上。Windows PowerShell：
+建議使用 Python 3.12 或 3.13。Windows PowerShell：
 
 ```powershell
 python -m venv .venv
@@ -95,7 +101,7 @@ SELECT * FROM TemperatureForecasts WHERE regionName = '中部地區';
 
 ## 部署與資料更新
 
-使用 Streamlit Community Cloud 時，選擇此 GitHub 儲存庫、`main` 分支及 `app.py`，Python 選擇 3.11 以上。
+使用 Streamlit Community Cloud 時，選擇此 GitHub 儲存庫、`main` 分支及 `app.py`，Python 選擇 3.12。
 
 GitHub Actions 提供每六小時的更新流程，也可手動執行。需在 Repository secrets 設定 `CWA_API_KEY`，流程才可抓取新資料並更新資料庫；未設定時仍可展示附帶的快照，但不會自動產生新預報。排程可能因平台負載或儲存庫閒置而延後。
 
