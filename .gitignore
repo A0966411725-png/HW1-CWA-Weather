@@ -16,3 +16,4 @@ dist/
 PRIVATE_API_KEYS.md
 .streamlit/secrets.toml
 weather_raw.json
+weather_town_raw.json

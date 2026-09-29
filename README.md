@@ -12,7 +12,7 @@
 
 - 北部、中部、南部、東北部、東部、東南部地區切換。
 - 七天最低溫 MinT／最高溫 MaxT 折線圖、表格與 CSV 下載。
-- 選擇預報日期，在 Folium 地圖查看各區溫度範圍。
+- 選擇預報日期，在 Folium 地圖查看全台 368 個鄉鎮市區（或切換為六大區域）的溫度；仿照 [AirBox 空氣盒子](https://airbox.edimaxcloud.com/)，標記直接顯示數值並依色階上色，圖例位於地圖角落。
 - SQLite 唯一鍵與交易保護，重複匯入不產生重複資料，失敗時保留原資料。
 - 顯示預報發布時間，資料超過 24 小時會提醒使用者。
 
@@ -22,9 +22,9 @@
 2. **解析 JSON（20%）：** 依地區、預報日期配對高低溫，驗證六區各有七天完整資料。
 3. **儲存 SQLite（20%）：** 寫入 TemperatureForecasts，使用 SQL 列出地區並查詢選定地區資料。
 4. **Streamlit（40%）：** 提供地區下拉選單、雙線折線圖與七天資料表；畫面只從 SQLite 讀取，不直接呼叫氣象 API。
-5. **選做地圖：** 使用 Folium／OpenStreetMap，按日期顯示六區高低溫，不需要 Windy 金鑰。
+5. **選做地圖：** 使用 Folium／OpenStreetMap，按日期顯示各鄉鎮市區或六大區域的溫度，不需要 Windy 金鑰。色階依課程設定：<20°C 藍、20–24°C 綠、25–30°C 黃、>30°C 紅。
 
-開發採自然語言與 Codex 協作：先拆解評分項目，再建立資料擷取、解析、資料庫與介面，最後以自動測試及實際 CWA 資料驗證。AI 協助撰寫與修正程式，實作結果以程式、測試及資料查詢結果核對。
+開發採自然語言與 AI Agent（Codex、Claude Code）協作：先拆解評分項目，再建立資料擷取、解析、資料庫與介面，最後以自動測試及實際 CWA 資料驗證。AI 協助撰寫與修正程式，實作結果以程式、測試及資料查詢結果核對。
 
 ## 資料來源
 
@@ -41,6 +41,8 @@ cwaopendata → Dataset → Locations → Location[]
 ```
 
 將 MinTemperature／MaxTemperature 對應成 mint／maxt，以預報時段起始日期配對；若同日有多個時段，取最低的 MinT 與最高的 MaxT。
+
+地圖的鄉鎮圖層使用 22 縣市的一週鄉鎮預報（[F-D0047-003、-007 … -087](https://opendata.cwa.gov.tw/dist/opendata-swagger.html)），透過 F-D0047-093 每次查詢 5 個縣市。每個鄉鎮附有經緯度，同樣以日期合併白天與夜間時段的高低溫，共 368 個鄉鎮市區 × 7 天。
 
 ## 安裝與執行
 
@@ -87,9 +89,25 @@ CREATE TABLE TemperatureForecasts (
 
 SELECT DISTINCT regionName FROM TemperatureForecasts;
 SELECT * FROM TemperatureForecasts WHERE regionName = '中部地區';
+
+-- 地圖鄉鎮圖層
+CREATE TABLE TownForecasts (
+  id INTEGER PRIMARY KEY,
+  countyName TEXT NOT NULL,
+  townName TEXT NOT NULL,
+  lat REAL NOT NULL,
+  lon REAL NOT NULL,
+  dataDate TEXT NOT NULL,
+  mint REAL NOT NULL,
+  maxt REAL NOT NULL,
+  UNIQUE(countyName, townName, dataDate),
+  CHECK(mint <= maxt)
+);
+
+SELECT * FROM TownForecasts WHERE dataDate = '2026-09-30';
 ```
 
-每次成功匯入會以單一交易替換目前預報期，共 42 筆；不混用不同發布版本。程式查詢使用 SQL 參數，避免將使用者輸入直接拼入 SQL。
+每次成功匯入會以單一交易替換目前預報期（區域 42 筆、鄉鎮約 2,576 筆）；不混用不同發布版本。鄉鎮資料更新失敗時保留前一版地圖資料，不影響區域預報更新。程式查詢使用 SQL 參數，避免將使用者輸入直接拼入 SQL。
 
 ## 測試
 
@@ -97,7 +115,7 @@ SELECT * FROM TemperatureForecasts WHERE regionName = '中部地區';
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-驗證六區七天資料、日期配對、缺值與異常值、重複匯入、SQL 參數查詢，以及匯入失敗時交易回復。
+驗證六區七天資料、日期配對、缺值與異常值、重複匯入、SQL 參數查詢、匯入失敗時交易回復，以及鄉鎮資料的日夜時段合併、縣市完整性與座標檢查。
 
 ## 部署與資料更新
 
@@ -120,4 +138,4 @@ GitHub Actions 提供每六小時的更新流程，也可手動執行。需在 R
 
 ## 使用說明
 
-預報資料不等於實際觀測。地圖標記為區域示意中心，色階使用高低溫中點，不代表氣象署發布的日平均溫。資料庫保留最近一次預報版本，不提供歷史預報查詢。API 金鑰與原始設定檔不公開上傳。
+預報資料不等於實際觀測。鄉鎮標記位於氣象署提供的鄉鎮代表點，六大區域標記為區域示意中心；標記數字與色階使用高低溫中點（四捨五入），不代表氣象署發布的日平均溫。資料庫保留最近一次預報版本，不提供歷史預報查詢。API 金鑰與原始設定檔不公開上傳。

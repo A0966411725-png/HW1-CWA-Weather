@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from database import get_regions, query_forecast, save_forecast
-from parse_weather import REGIONS, parse_weather
+from database import get_regions, query_forecast, query_towns, save_forecast, save_towns
+from parse_weather import COUNTY_COUNT, REGIONS, parse_towns, parse_weather
 
 
 def fixture():
@@ -15,6 +15,20 @@ def fixture():
             elements.append({"Time": [{"StartTime": f"2026-09-{day:02d}T00:00:00+08:00", "ElementValue": {name: value}} for day in range(20, 27)]})
         locations.append({"LocationName": region, "WeatherElement": elements})
     return {"cwaopendata": {"Dataset": {"Locations": {"Location": locations}}}}
+
+
+def town_fixture():
+    """22 counties × 2 towns, day and night periods for seven dates, shaped like F-D0047-093."""
+    def periods(name, day_value, night_value):
+        return [{"StartTime": f"2026-09-{day:02d}T{hour}:00:00+08:00", "ElementValue": [{name: value}]}
+                for day in range(20, 27) for hour, value in (("06", day_value), ("18", night_value))]
+    counties = []
+    for index in range(COUNTY_COUNT):
+        towns = [{"LocationName": town, "Latitude": "24.0", "Longitude": "121.0", "WeatherElement": [
+            {"ElementName": "最高溫度", "Time": periods("MaxTemperature", "31", "27")},
+            {"ElementName": "最低溫度", "Time": periods("MinTemperature", "26", "22")}]} for town in ("東區", "西區")]
+        counties.append({"LocationsName": f"縣市{index}", "Location": towns})
+    return {"Locations": counties}
 
 
 class ForecastTests(unittest.TestCase):
@@ -62,3 +76,37 @@ class ForecastTests(unittest.TestCase):
             with self.assertRaises(Exception):
                 save_forecast(invalid, "2026-09-20T11:00:00+08:00", path)
             self.assertEqual(len(query_forecast(db_path=path)), 42)
+
+
+class TownForecastTests(unittest.TestCase):
+    def test_day_and_night_periods_merge_per_date(self):
+        frame = parse_towns(town_fixture())
+        self.assertEqual(len(frame), COUNTY_COUNT * 2 * 7)
+        self.assertEqual(set(frame.mint), {22})
+        self.assertEqual(set(frame.maxt), {31})
+
+    def test_rejects_missing_county_bad_value_and_coordinates(self):
+        payload = town_fixture()
+        payload["Locations"].pop()
+        with self.assertRaises(ValueError):
+            parse_towns(payload)
+        payload = town_fixture()
+        payload["Locations"][0]["Location"][0]["WeatherElement"][0]["Time"][0]["ElementValue"][0]["MaxTemperature"] = "-99"
+        with self.assertRaises(ValueError):
+            parse_towns(payload)
+        payload = town_fixture()
+        payload["Locations"][0]["Location"][0]["Latitude"] = "0"
+        with self.assertRaises(ValueError):
+            parse_towns(payload)
+
+    def test_town_import_replaces_and_filters_by_date(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "data.db"
+            save_forecast(parse_weather(fixture()), "2026-09-20T05:00:00+08:00", path)
+            self.assertTrue(query_towns(db_path=path).empty)
+            frame = parse_towns(town_fixture())
+            save_towns(frame, path)
+            save_towns(frame, path)
+            self.assertEqual(len(query_towns(db_path=path)), COUNTY_COUNT * 2 * 7)
+            self.assertEqual(len(query_towns("2026-09-21", path)), COUNTY_COUNT * 2)
+            self.assertTrue(query_towns("' OR 1=1 --", path).empty)
