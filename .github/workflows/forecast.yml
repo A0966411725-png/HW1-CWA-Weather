@@ -1,0 +1,38 @@
+name: Forecast checks and refresh
+on:
+  push:
+    paths: ['*.py', 'requirements.txt', 'tests/**', '.github/workflows/forecast.yml']
+  workflow_dispatch:
+  schedule:
+    - cron: '23 */6 * * *'
+permissions:
+  contents: write
+concurrency:
+  group: forecast-refresh
+  cancel-in-progress: false
+jobs:
+  forecast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v
+      - name: Refresh CWA forecast
+        if: github.event_name != 'push'
+        env:
+          CWA_API_KEY: ${{ secrets.CWA_API_KEY }}
+        run: python update_weather.py
+      - name: Commit new forecast
+        if: github.event_name != 'push'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data.db weather_data.csv
+          if ! git diff --cached --quiet; then
+            git commit -m 'Refresh CWA seven-day regional forecast'
+            git push
+          fi
