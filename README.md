@@ -1,8 +1,8 @@
-[開啟氣象預報網站](https://hw10-taiwan-weather-yenkai.streamlit.app/)
+[開啟氣象預報網站](https://hw1-cwa-weather-yenkai.streamlit.app/)
 
 ![台灣六大區域一週氣象預報網站](website.png)
 
-[GitHub 原始碼](https://github.com/A0966411725-png/HW10-Taiwan-Weather)
+[GitHub 原始碼](https://github.com/A0966411725-png/HW1-CWA-Weather)
 
 # HW1｜CWA 天氣預報網站 using AI Agent
 
